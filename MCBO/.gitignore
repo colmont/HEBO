@@ -1,3 +1,4 @@
+# huawei
 .idea/
 /mcbo/tasks/eda_seq_opt/scripts/main_eda_seq_opt_34_level.sh
 /mcbo/tasks/eda_seq_opt/scripts/main_eda_seq_opt_34_lut.sh
@@ -18,3 +19,15 @@
 /paper_results/data_mcbo_mix/
 **/*__perso__*
 *__perso__*
+
+# colin
+**/__pycache__/
+libs/
+libs/EDA
+/results/
+MCBO.egg-info/
+/paper_results/data_mcbo
+/paper_results/data_mcbo_mixed
+mcbo/tasks/data
+mcbo/tasks/eda_seq_opt
+mcbo/tasks/mig_seq_opt

@@ -19,7 +19,7 @@ Tested on Ubuntu 18.04 and python 3.8.
 Create a conda environment and activate it.
 
 ```shell
-conda create -n mcbo_env python=3.8
+conda create -n mcbo_env python=3.9
 conda activate mcbo_env
 
 # install MCBO to be able to run optimization on custom problems
@@ -38,7 +38,7 @@ chmod u+x ./bbox_setup.sh
 ### Synthetic
 
 - 21 SFU test functions
-- `ackley`: Ackley 20 caterorical dimensions (11 categories each).
+- `ackley`: Ackley 20 categorical dimensions (11 categories each).
 - `ackley-53`: Ackley 50 binary dimensions, 3 numerical.
 - `pest`: Pest Control
 
@@ -172,7 +172,7 @@ chmod u+x ./experiments/all_runs.sh
 ./experiments/all_runs.sh
 ```
 
-Results will be saved in `./resutls/` or in user specified path (modify `RESULTS_DIR`
+Results will be saved in `./results/` or in user specified path (modify `RESULTS_DIR`
 in [global_settings.py](./mcbo/global_settings.py)).
 
 #### Visualize

@@ -68,4 +68,4 @@ rm SUDDL6142d1af0c3837a24ca534e96b7192bb-10-11-af8a57bbcc249709ce1058ec80ba20a4S
 
 # go back to project root and add path to executable
 cd ../../../../../
-echo './libs/Absolut/src/' > /data/antoineg/MCBO/mcbo/tasks/antibody_design/path_to_AbsolutNoLib.txt
+echo './libs/Absolut/src/' > /cluster/home/cdoumont/HEBO/MCBO/mcbo/tasks/antibody_design/path_to_AbsolutNoLib.txt
