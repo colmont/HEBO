@@ -20,6 +20,7 @@ if __name__ == '__main__':
     parser.add_argument("--max_num_iter", type=int, default=200, help="Number of acquisitions")
     parser.add_argument("--bo_n_init", type=int, default=20,
                         help="Number of points to acquire before running acquisition with BO")
+    parser.add_argument("--variant", type=int, required=True, help="Variant of the method (only 1st degree, fixed variances, etc.)")
 
     # Antigen binding task
     parser.add_argument("--absolut_dir", type=str, default=None, required=False, help="Path to Absolut! executer.")
@@ -58,5 +59,6 @@ if __name__ == '__main__':
                 max_num_iter=max_num_iter,
                 save_results_every=max_num_iter,
                 very_verbose=args.verbose > 1,
-                result_dir=args.result_dir
+                result_dir=args.result_dir,
+                variant=args.variant
             )

@@ -38,6 +38,7 @@ def run_experiment(
         optimizers: List[OptimizerBase],
         random_seeds: List[int],
         max_num_iter: int,
+        variant: int,
         save_results_every: int = 100,
         very_verbose=False,
         result_dir: Optional[str] = None
@@ -73,7 +74,7 @@ def run_experiment(
 
     for optimizer in optimizers:
 
-        optim_save_dir = os.path.join(exp_save_dir, optimizer.name)
+        optim_save_dir = os.path.join(exp_save_dir, optimizer.name, f'variant_{variant}')
         create_save_dir(optim_save_dir)
 
         for i, seed in enumerate(random_seeds):
@@ -108,11 +109,15 @@ def run_experiment(
                         optimizer.x_init = optimizer.x_init[len(x_next):]
                     optimizer.observe(x=x_next, y=y_next)
 
+                    if type(optimizer.best_y[0]) == torch.Tensor:
+                        y_star = optimizer.best_y[0].cpu().numpy()
+                    else:
+                        y_star = optimizer.best_y[0]
                     results_logger.append(
                         eval_num=len(optimizer.data_buffer),
                         x=x_next.iloc[0].to_dict(),
                         y=y_next[0, 0],
-                        y_star=optimizer.best_y[0],
+                        y_star=y_star,
                         elapsed_time=elapsed_time[iter_num]
                     )
 
@@ -149,11 +154,15 @@ def run_experiment(
                 if len(x_next) == 0:
                     continue
 
+                if type(optimizer.best_y[0]) == torch.Tensor:
+                    y_star = optimizer.best_y[0].cpu().numpy()
+                else:
+                    y_star = optimizer.best_y[0]
                 results_logger.append(
                     eval_num=len(optimizer.data_buffer),
                     x=x_next.iloc[0].to_dict(),
                     y=y_next[0, 0],
-                    y_star=optimizer.best_y[0],
+                    y_star=y_star,
                     elapsed_time=stopwatch.get_total_time()
                 )
 
@@ -272,8 +281,8 @@ def get_opt(task: TaskBase, short_opt_id: str, bo_n_init: int = 20,
     return opt
 
 
-def get_opt_results(task_id: str, opt_short_name: str, seeds: List[int], result_dir: Optional[str] = None,
-                    **task_kwargs) -> str:
+def get_opt_results(task_id: str, opt_short_name: str, seeds: List[int], variant: int,
+                    result_dir: Optional[str] = None, **task_kwargs) -> str:
     task = get_task_from_id(task_id=task_id, **task_kwargs)
     opt = get_opt(task=task, short_opt_id=opt_short_name)
 
@@ -288,13 +297,13 @@ def get_opt_results(task_id: str, opt_short_name: str, seeds: List[int], result_
     sub_folder_dir = os.path.join(result_dir, task.name, optname)
 
     for seed in seeds:
-        res_path = os.path.join(sub_folder_dir, f'seed_{seed}_results.csv')
+        res_path = os.path.join(sub_folder_dir, f'variant_{variant}', f'seed_{seed}_results.csv')
         if not os.path.exists(res_path):
             print(task_id, opt_short_name, seed)
             continue
         df = pd.read_csv(res_path)
         n_rows = len(df['Eval Num'])
-        df['Optimizer'] = [opt.name for _ in range(n_rows)]
+        df['Optimizer'] = [f'{opt.name} (v{variant})' for _ in range(n_rows)]
         df['Task'] = [task.name for _ in range(n_rows)]
         df['Seed'] = [seed for _ in range(n_rows)]
         df['Model'] = [opt.model_name for _ in range(n_rows)]
