@@ -14,7 +14,7 @@ from gpytorch.constraints import Interval
 from gpytorch.kernels import Kernel, MaternKernel, RBFKernel, ScaleKernel
 
 from mcbo.models.gp.kernels import DiffusionKernel, MixtureKernel, Overlap, TransformedOverlap, \
-    SubStringKernel, HEDKernel
+    SubStringKernel, HEDKernel, Duvenaud
 from mcbo.search_space import SearchSpace
 
 
@@ -55,6 +55,8 @@ def kernel_factory(
     elif kernel_name == 'transformed_overlap':
         kernel = TransformedOverlap(active_dims=active_dims, ard_num_dims=ard_num_dims,
                                     lengthscale_constraint=lengthscale_constraint)
+    elif kernel_name == 'duvenaud':
+        kernel = Duvenaud(num_dims=kwargs.get('search_space').nominal_dims)
 
     elif kernel_name == 'ssk':
         assert 'search_space' in kwargs
@@ -101,7 +103,7 @@ def kernel_factory(
     else:
         raise NotImplementedError(f'{kernel_name} was not implemented')
 
-    if kernel is not None:
+    if kernel is not None and kernel_name!='duvenaud': #FIXME?
         kernel = ScaleKernel(kernel, outputscale_constraint=outputscale_constraint)
 
     return kernel

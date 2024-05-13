@@ -136,7 +136,7 @@ class BoBuilder:
 
     @staticmethod
     def get_model(search_space: SearchSpace, model_id: str, **model_kwargs) -> ModelBase:
-        if model_id in ["gp_to", "gp_o", "gp_hed", "gp_ssk"]:
+        if model_id in ["gp_to", "gp_duv", "gp_o", "gp_hed", "gp_ssk"]:
             gp_kwargs = DEFAULT_MODEL_EXACT_GP_KWARGS.copy()
             kernel_kwargs = DEFAULT_MODEL_EXACT_GP_KERNEL_KWARGS.copy()
             kernel_kwargs.update(model_kwargs.get("default_kernel_kwargs", {}))
@@ -144,6 +144,9 @@ class BoBuilder:
             if model_id == "gp_to":
                 kernel_kwargs["nominal_kernel_name"] = "transformed_overlap"
                 kernel_kwargs["nominal_kernel_use_ard"] = model_kwargs.get("nominal_kernel_use_ard", True)
+            elif model_id == "gp_duv":
+                kernel_kwargs["nominal_kernel_name"] = "duvenaud"
+                kernel_kwargs["nominal_kernel_use_ard"] = False  # doesn't matter, won't change anything
             elif model_id == "gp_o":
                 kernel_kwargs["nominal_kernel_name"] = "overlap"
                 kernel_kwargs["nominal_kernel_use_ard"] = model_kwargs.get("nominal_kernel_use_ard", True)

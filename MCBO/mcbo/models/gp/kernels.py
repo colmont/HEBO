@@ -6,12 +6,13 @@
 # This program is distributed in the hope that it will be useful, but WITHOUT ANY
 # WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
 # PARTICULAR PURPOSE. See the MIT License for more details.
+from functools import reduce
 from typing import Union, List, Optional, Tuple, Dict, Any
 
 import numpy as np
 import torch
 from gpytorch import settings, lazify, delazify
-from gpytorch.priors import Prior
+from gpytorch.priors import Prior, GammaPrior
 from gpytorch.constraints import Interval, Positive
 from gpytorch.kernels import Kernel, RBFKernel, ScaleKernel, MaternKernel
 from gpytorch.lazy import LazyEvaluatedKernelTensor
@@ -138,14 +139,25 @@ class TransformedOverlap(Overlap):
     def name(self) -> str:
         return "TO"
 
-    def forward(self, x1, x2, diag=False, last_dim_is_batch=False, exp='rbf', **params):
+    def forward(self, x1, x2, active_dim=None, diag=False, last_dim_is_batch=False, exp='rbf', **params):
+        if active_dim is not None:  # necessary to define base kernel in Duvenaud class
+            x1 = x1.index_select(-1, torch.tensor(active_dim, device=x1.device))
+            x2 = x2.index_select(-1, torch.tensor(active_dim, device=x2.device))
+            if x1.ndimension() == 1:
+                x1 = x1.unsqueeze(1)
+            if x2.ndimension() == 1:
+                x2 = x2.unsqueeze(1)
+
         diff = x1[:, None] - x2[None, :]
         diff[torch.abs(diff) > 1e-5] = 1
         diff1 = torch.logical_not(diff).to(x1)
 
         def rbf(d, ard):
             if ard:
-                return torch.exp(torch.sum(d * self.lengthscale, dim=-1) / torch.sum(self.lengthscale))
+                if active_dim is not None:  # base kernel Duvenaud
+                    return torch.exp(torch.sum(d * self.lengthscale[:,active_dim], dim=-1) / torch.sum(self.lengthscale))
+                else: # regular TO kernel
+                    return torch.exp(torch.sum(d * self.lengthscale, dim=-1) / torch.sum(self.lengthscale))
             else:
                 return torch.exp(self.lengthscale * torch.sum(d, dim=-1) / x1.shape[1])
 
@@ -161,6 +173,123 @@ class TransformedOverlap(Overlap):
         if diag:
             return torch.diag(k_cat).to(x1)
         return k_cat.to(x1)
+
+
+class Duvenaud(Kernel):
+    """TODO"""
+
+    has_lengthscale = False
+
+    @property
+    def name(self) -> str:
+        return "Duvenaud"
+
+    def __init__(self, num_dims: int):
+        super().__init__()
+        
+        if torch.cuda.is_available():
+            self.device = torch.device("cuda")
+        else:
+            self.device = torch.device("cpu")
+
+        # D and D̃
+        self.num_dims = len(num_dims)
+        self.max_interaction_depth = 9999
+        if self.max_interaction_depth > self.num_dims:
+            self.max_interaction_depth = self.num_dims
+        
+        # K_d
+        self.base_kernel = TransformedOverlap(ard_num_dims=self.num_dims)
+
+        # sigma_l
+        self.share_var_across_orders = True
+        if self.share_var_across_orders:
+            variances = [
+                0.0
+                for _ in range(self.max_interaction_depth + 1)
+            ]
+        else:
+            variances = [0.0]
+
+        variances_prior = None  # GammaPrior(concentration=1.0, rate=0.2)
+        self.register_parameter(name='raw_variances', parameter=torch.nn.Parameter(torch.tensor(variances)))
+        if self.share_var_across_orders:
+            if variances_prior is not None:
+                self.register_prior(
+                    "variances_prior", variances_prior, lambda m: m.variances, lambda m, v: m._set_variances(v)
+                )
+        self.register_constraint("raw_variances", Positive())  # Interval(0,1)
+
+    @property
+    def variances(self):
+        return self.raw_variances_constraint.transform(self.raw_variances)
+
+    @variances.setter
+    def variances(self, value):
+        self._set_variances(value)
+
+    def _set_variances(self, value):
+        if not torch.is_tensor(value):
+            value = torch.as_tensor(value).to(self.raw_variances)
+        self.initialize(raw_variances=self.raw_variances_constraint.inverse_transform(value))
+
+    def compute_additive_terms(self, kernel_matrices):
+        """
+        Given a list of tensors (kernel matrices), compute a new list
+        containing all products up to order self.max_interaction_depth.
+
+        Example:
+        input: [a, b, c, d]
+        output: [1, (a+b+c+d), (ab+ac+ad+bc+bd+cd), (abc+abd+acd+bcd), abcd)]
+
+        Uses the Girard Newton identity, as found in Duvenaud et al "Additive GPs". This avoids
+        computing exponentially many terms, computations scale with O(D^2) (where D is the length of
+        the kernel list or self.max_interaction_depth)
+        """
+        # Compute sums of powers of kernel matrices
+        kernel_matrices = [k.evaluate() for k in kernel_matrices]
+        s = [
+            reduce(torch.add, [torch.pow(k, p) for k in kernel_matrices])
+            for p in range(1, self.max_interaction_depth + 1)
+        ]
+        s.insert(0, torch.ones_like(kernel_matrices[0]))  # Insert constant term at the start
+
+        # Compute e using the recursive definition
+        e = [torch.ones_like(kernel_matrices[0])]  # start with constant term
+        for n in range(1, self.max_interaction_depth + 1):
+            e.append(
+                (1.0 / n) * reduce(
+                    torch.add,
+                    [((-1) ** (k - 1)) * e[n - k] * s[k] for k in range(1, n + 1)],
+                )
+            )
+        return e
+
+    def forward(self, x1, x2, diag=False, last_dim_is_batch=False, **params):
+        kernel_matrices = [
+            self.base_kernel(x1=x1, x2=x2, active_dim=[i], diag=diag, last_dim_is_batch=last_dim_is_batch, **params)
+            for i in range(self.num_dims)
+        ]  # note that active dims gets applied by each kernel
+        additive_terms = self.compute_additive_terms(kernel_matrices)
+        additive_terms = [additive_terms[i]/additive_terms[i].min() for i in range(len(additive_terms))]  # normalize
+
+        if self.share_var_across_orders:
+            k_cat = reduce(
+                torch.add,
+                [sigma2 * k for sigma2, k in zip(self.variances, additive_terms)],
+            )
+        else:
+            # add constant kernel
+            k_cat = self.variances[0] * additive_terms[0] + torch.sum(torch.stack(additive_terms[1:]), dim=0)
+            # k_cat = reduce(
+            #     torch.add,
+            #     [torch.pow(self.variances[0], i) * k for i, k in enumerate(additive_terms)],
+            # )
+            
+        return k_cat
+
+    def train(self, mode=True):
+        self.base_kernel.train(mode)
 
 
 class OrdinalKernel(Kernel):
@@ -228,6 +357,21 @@ class SubStringKernel(Kernel):
         self.exp = torch.ones(self.maxlen, self.maxlen, dtype=torch.int)
         for i in range(self.maxlen - 1):
             self.exp[i, i + 1:] = torch.arange(self.maxlen - i - 1)
+
+        # self.register_parameter(name='raw_match_decay', parameter=torch.nn.Parameter(torch.tensor(match_decay)))
+        # self.register_parameter(name='raw_gap_decay', parameter=torch.nn.Parameter(torch.tensor(gap_decay)))
+        # self.register_constraint("raw_gap_decay", Interval(0, 1))
+        # self.register_constraint("raw_match_decay", Interval(0, 1))
+
+    # @property
+    # def match_decay(self):
+    #     # return self.raw_match_decay_constraint.transform(self.raw_match_decay)
+    #     return self.raw_match_decay
+
+    # @property
+    # def gap_decay(self):
+    #     # return self.raw_gap_decay_constraint.transform(self.raw_gap_decay)
+    #     return self.raw_gap_decay
 
     def to(self, device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None):
         self.tril.to(device=device, dtype=dtype)
