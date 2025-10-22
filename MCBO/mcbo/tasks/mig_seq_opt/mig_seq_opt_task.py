@@ -69,6 +69,23 @@ class MigSeqOpt(TaskBase):
         return f'MIG Sequence Optimisation - {self.ntk_name} - {self.objective}'
 
     def evaluate(self, x: pd.DataFrame) -> np.ndarray:
+
+        if self.flip:
+            def flip(x):
+                assert x.ndim == 1
+                n_choice = 7
+                n_stages = 20
+                x = (x + np.random.RandomState(42).choice(n_choice, n_stages)) % n_choice
+                return x
+
+            COLUMNS = x.columns
+
+            x_short = np.vectorize(self.op_to_idx.get)(x)
+            x_short_shuffled = np.array([flip(_x) for _x in x_short])
+
+            x = np.vectorize(self.idx_to_op.get)(x_short_shuffled)
+            x = pd.DataFrame(x, columns=COLUMNS)
+
         n = len(x)
         y = np.zeros((n, 1), dtype=np.float64)
         for i in range(n):

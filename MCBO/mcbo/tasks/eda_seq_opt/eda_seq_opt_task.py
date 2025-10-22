@@ -370,6 +370,18 @@ class EDASeqOptimization(TaskBase):
         if len(self.refs_1) == 0:
             self.compute_refs()
 
+        if self.flip:
+            COLUMNS = x.columns
+            def relocate(x):
+                assert x.ndim == 1
+                n_choice = 10
+                n_stages = 20
+                x = (x + np.random.RandomState(42).choice(n_choice, n_stages)) % n_choice
+                return x
+            x = x.to_numpy().astype(int)
+            x = np.array([relocate(_x) for _x in x])
+            x = pd.DataFrame(x, columns=COLUMNS)
+
         n = len(x)
 
         ind_prod = list(

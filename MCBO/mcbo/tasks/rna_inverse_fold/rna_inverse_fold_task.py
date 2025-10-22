@@ -42,6 +42,29 @@ class RNAInverseFoldTask(TaskBase):
             between the folded RNA sequence and the target
         """
 
+        if self.flip:
+            def flip(x):
+                assert x.ndim == 1
+                n_choice = 4
+                n_stages = 40
+                x = (x + np.random.RandomState(42).choice(n_choice, n_stages)) % n_choice
+                return x
+
+            LONG_TO_SHORT = {
+                "A": 0,
+                "C": 1,
+                "G": 2,
+                "U": 3,
+            }
+            COLUMNS = x.columns
+
+            x_short = np.vectorize(LONG_TO_SHORT.get)(x)
+            x_short_shuffled = np.array([flip(_x) for _x in x_short])
+
+            SHORT_TO_LONG = {v: k for k, v in LONG_TO_SHORT.items()}
+            x = np.vectorize(SHORT_TO_LONG.get)(x_short_shuffled)
+            x = pd.DataFrame(x, columns=COLUMNS)
+
         sequences: List[str] = []
         for i in range(len(x)):
             seq = x.iloc[i].values

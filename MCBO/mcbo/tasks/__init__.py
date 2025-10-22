@@ -9,6 +9,6 @@
 
 from mcbo.tasks.task_base import TaskBase
 from mcbo.tasks.synthetic.sfu.sfu_base import SfuFunction
-from mcbo.tasks.synthetic import PestControl
+from mcbo.tasks.synthetic import PestControl, Contamination, Labs
 from mcbo.tasks.antibody_design import CDRH3Design
 from mcbo.tasks.mig_seq_opt import MigSeqOpt

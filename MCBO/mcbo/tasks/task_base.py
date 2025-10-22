@@ -3,6 +3,7 @@ import time
 from abc import ABC, abstractmethod
 from typing import Optional, List, Callable, Dict, Any
 
+import gin
 import numpy as np
 import pandas as pd
 import torch
@@ -17,13 +18,15 @@ from mcbo.search_space import SearchSpace
 # PARTICULAR PURPOSE. See the MIT License for more details.
 
 
+@gin.configurable
 class TaskBase(ABC):
     """ Abstract class to define optimization (** MINIMISATION **) tasks """
 
-    def __init__(self, **kwargs) -> None:
+    def __init__(self, flip: bool = False, **kwargs) -> None:
         self.kwargs = kwargs
         self._n_bb_evals = 0
         self.last_eval_time = None
+        self.flip = flip
 
     @property
     @abstractmethod

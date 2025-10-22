@@ -9,3 +9,5 @@
 
 from mcbo.tasks.synthetic.sfu import *
 from mcbo.tasks.synthetic.pest import PestControl
+from mcbo.tasks.synthetic.contamination import Contamination
+from mcbo.tasks.synthetic.labs import Labs

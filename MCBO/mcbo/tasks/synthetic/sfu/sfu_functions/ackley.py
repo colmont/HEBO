@@ -41,7 +41,8 @@ class Ackley(SfuFunction):
         self.c = c
         self.x_star = pd.DataFrame([[0 for _ in range(num_dims)]])  # Global minimiser
         if (self.x_star <= self.ub).all().all() and (self.x_star >= self.lb).all().all():
-            self.global_optimum = self.evaluate(self.x_star)[0, 0]  # Global optimum
+            # self.global_optimum = self.evaluate(self.x_star)[0, 0]  # Global optimum
+            self.global_optimum = np.array([4.440892098500626e-16])
 
     def evaluate(self, x: pd.DataFrame) -> np.ndarray:
         assert x.ndim == 2
@@ -50,6 +51,35 @@ class Ackley(SfuFunction):
         assert (x >= self.lb).all().all()
 
         x = x.to_numpy().astype(float)
+
+        if self.flip:
+            def flip(x):
+                assert x.ndim == 1
+                n_choice = 11
+                n_stages = 20
+                x = (x + np.random.RandomState(42).choice(n_choice, n_stages)) % n_choice
+                return x
+
+            LONG_TO_SHORT = {
+                -32.768: 0,
+                -26.2144: 1,
+                -19.6608: 2,
+                -13.1072: 3,
+                -6.5536: 4,
+                0.0: 5,
+                6.5536: 6,
+                13.1072: 7,
+                19.6608: 8,
+                26.2144: 9,
+                32.768: 10
+            }
+
+            x = np.round(x, decimals=4)
+            x_short = np.vectorize(LONG_TO_SHORT.get)(x)
+            x_short_shuffled = np.array([flip(_x) for _x in x_short])
+
+            SHORT_TO_LONG = {v: k for k, v in LONG_TO_SHORT.items()}
+            x = np.vectorize(SHORT_TO_LONG.get)(x_short_shuffled)
 
         sum1 = (x ** 2).sum(axis=1)
         sum2 = (np.cos(self.c * x)).sum(axis=1)

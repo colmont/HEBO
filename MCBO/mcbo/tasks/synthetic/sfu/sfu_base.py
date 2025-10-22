@@ -1,10 +1,12 @@
 from abc import ABC, abstractmethod
 from typing import Union, List
 
+import gin
 import numpy as np
 import pandas as pd
 
 
+@gin.configurable
 class SfuFunction(ABC):
 
     @property
@@ -14,7 +16,8 @@ class SfuFunction(ABC):
 
     def __init__(self, num_dims: Union[int, List[int]],
                  lb: Union[float, np.ndarray],
-                 ub: Union[float, np.ndarray]):
+                 ub: Union[float, np.ndarray],
+                 flip: bool = False):
         assert isinstance(num_dims, (int, list)), num_dims
         assert isinstance(lb, int) or isinstance(lb, float) or isinstance(lb, np.ndarray)
         assert isinstance(ub, int) or isinstance(ub, float) or isinstance(ub, np.ndarray)
@@ -22,6 +25,7 @@ class SfuFunction(ABC):
         self.num_dims = num_dims
         self.lb = lb
         self.ub = ub
+        self.flip = flip
 
     @abstractmethod
     def evaluate(self, x: pd.DataFrame) -> np.ndarray:

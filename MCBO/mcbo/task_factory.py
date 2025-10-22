@@ -7,8 +7,15 @@
 # WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
 # PARTICULAR PURPOSE. See the MIT License for more details.
 
-from mcbo.tasks import TaskBase, PestControl, CDRH3Design, \
-    MigSeqOpt
+from mcbo.tasks import (
+    TaskBase,
+    PestControl,
+    Contamination,
+    CDRH3Design,
+    MigSeqOpt,
+    Labs,
+)
+from mcbo.tasks.synthetic.maxsat.maxsat import MaxSat60, MaxSat125
 from mcbo.tasks.synthetic.sfu.sfu_task import SfuTask
 from mcbo.tasks.synthetic.sfu.utils_sfu import SFU_FUNCTIONS
 
@@ -37,6 +44,18 @@ def task_factory(task_name: str, **kwargs) -> TaskBase:
 
     elif task_name == 'pest':
         task = PestControl()
+
+    elif task_name == 'contamination':
+        task = Contamination()
+
+    elif task_name == 'maxsat60':
+        task = MaxSat60()
+
+    elif task_name == 'maxsat125':
+        task = MaxSat125()
+
+    elif task_name == 'labs':
+        task = Labs()
 
     elif task_name == 'antibody_design':
         task = CDRH3Design(

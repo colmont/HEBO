@@ -95,6 +95,13 @@ class PestControl(TaskBase):
     def evaluate(self, x: pd.DataFrame) -> np.ndarray:
         x_ = x.replace(['do nothing', 'pesticide 1', 'pesticide 2', 'pesticide 3', 'pesticide 4'], [0, 1, 2, 3, 4])
         x_ = x_.to_numpy()
+
+        if self.flip:
+            def relocate(x):
+                assert x.ndim == 1
+                return (x + np.random.RandomState(42).choice(self._n_choices, self._n_stages)) % self._n_choices
+            x_ = np.array([relocate(x) for x in x_])
+
         return np.array([self._compute(i) for i in x_])
 
     def _compute(self, x):
