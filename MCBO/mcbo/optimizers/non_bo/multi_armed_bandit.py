@@ -337,7 +337,7 @@ class MultiArmedBandit(OptimizerNotBO):
         # update best x and y
         if self.best_y is None:
             batch_idx = y.flatten().argmin()
-            self.best_y = y[batch_idx, 0].item()
+            self.best_y = y[batch_idx, 0].unsqueeze(-1)
             self._best_x = x[batch_idx: batch_idx + 1]
 
         else:

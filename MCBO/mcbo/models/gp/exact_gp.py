@@ -11,6 +11,7 @@ import copy
 import warnings
 from typing import Optional, List
 
+import gin
 import gpytorch
 import math
 import numpy as np
@@ -30,6 +31,7 @@ from mcbo.search_space import SearchSpace
 from mcbo.utils.training_utils import subsample_training_data, remove_repeating_samples
 
 
+@gin.configurable
 class ExactGPModel(ModelBase, torch.nn.Module):
     supports_cuda = True
 

@@ -18,3 +18,11 @@
 /paper_results/data_mcbo_mix/
 **/*__perso__*
 *__perso__*
+libs/
+MCBO.egg-info/
+mcbo/tasks/data
+mcbo/tasks/eda_seq_opt/*.txt
+mcbo/tasks/mig_seq_opt/*.txt
+abc.history
+**/__pycache__/**
+results/**

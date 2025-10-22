@@ -8,11 +8,14 @@
 # PARTICULAR PURPOSE. See the MIT License for more details.
 
 import os
+import ast
 from typing import List, Optional, Dict, Type
 
 import numpy as np
 import pandas as pd
 import torch
+from wandb.wandb_run import Run
+from omegaconf import DictConfig, OmegaConf
 
 from mcbo import RESULTS_DIR, task_factory
 from mcbo.optimizers import OptimizerBase, RandomSearch, SimulatedAnnealing, MultiArmedBandit, GeneticAlgorithm, \
@@ -38,6 +41,7 @@ def run_experiment(
         optimizers: List[OptimizerBase],
         random_seeds: List[int],
         max_num_iter: int,
+        tracker: Run,
         save_results_every: int = 100,
         very_verbose=False,
         result_dir: Optional[str] = None
@@ -59,7 +63,7 @@ def run_experiment(
     if result_dir is None:
         result_dir = RESULTS_DIR
     exp_save_dir = os.path.join(result_dir, task.name)
-    create_save_dir(exp_save_dir)
+    # create_save_dir(exp_save_dir)
 
     stopwatch = Stopwatch()
     results_logger = ResultsLogger()
@@ -73,7 +77,7 @@ def run_experiment(
 
     for optimizer in optimizers:
 
-        optim_save_dir = os.path.join(exp_save_dir, optimizer.name)
+        optim_save_dir = result_dir
         create_save_dir(optim_save_dir)
 
         for i, seed in enumerate(random_seeds):
@@ -108,11 +112,15 @@ def run_experiment(
                         optimizer.x_init = optimizer.x_init[len(x_next):]
                     optimizer.observe(x=x_next, y=y_next)
 
+                    if type(optimizer.best_y[0]) == torch.Tensor:
+                        y_star = optimizer.best_y[0].cpu().numpy()
+                    else:
+                        y_star = optimizer.best_y[0]
                     results_logger.append(
                         eval_num=len(optimizer.data_buffer),
                         x=x_next.iloc[0].to_dict(),
                         y=y_next[0, 0],
-                        y_star=optimizer.best_y[0],
+                        y_star=y_star,
                         elapsed_time=elapsed_time[iter_num]
                     )
 
@@ -149,12 +157,20 @@ def run_experiment(
                 if len(x_next) == 0:
                     continue
 
+                if type(optimizer.best_y[0]) == torch.Tensor:
+                    y_star = optimizer.best_y[0].cpu().numpy()
+                else:
+                    y_star = optimizer.best_y[0]
                 results_logger.append(
                     eval_num=len(optimizer.data_buffer),
                     x=x_next.iloc[0].to_dict(),
                     y=y_next[0, 0],
-                    y_star=optimizer.best_y[0],
+                    y_star=y_star,
                     elapsed_time=stopwatch.get_total_time()
+                )
+                tracker.log(
+                    {"eval_num": len(optimizer.data_buffer),
+                    "y_star": y_star.item()}
                 )
 
                 if very_verbose:
@@ -199,10 +215,10 @@ def get_task_from_id(task_id: str, **task_kwargs) -> TaskBase:
                        "seq_operators_pattern_id": "basic_w_post_map"}
     elif task_id == 'svm_opt':
         task_kwargs = dict()
-    elif "ackley" in task_id or "levy" in task_id:
+    elif any(synth in task_id for synth in ["ackley", "levy", "schwefel", "styblinski_tang", "sphere", "rastrigin"]): 
         task_kwargs = None
         n_cats = 11
-        for synth in ["ackley", "levy"]:
+        for synth in ["ackley", "levy", "schwefel", "styblinski_tang", "sphere", "rastrigin"]:
             if synth not in task_id:
                 continue
             if task_id == synth:
@@ -222,7 +238,7 @@ def get_task_from_id(task_id: str, **task_kwargs) -> TaskBase:
         task_kwargs = {'designs_group_id': "sin", "operator_space_id": "basic", "objective": "both"}
     elif task_id == 'antibody_design':
         task_kwargs = {'num_cpus': 5, 'first_cpu': 0, 'absolut_dir': task_kwargs.get("absolut_dir")}
-    elif task_id == 'pest':
+    elif task_id in ['pest', 'contamination', 'maxsat60', 'maxsat125', 'labs']:
         task_kwargs = {}
     else:
         raise ValueError(task_id)
@@ -306,3 +322,64 @@ def get_opt_results(task_id: str, opt_short_name: str, seeds: List[int], result_
         results = pd.concat([results, df], ignore_index=True, sort=False)
 
     return results
+
+
+def gin_config_to_omegaconf(gin_file_path: str) -> DictConfig:
+    """
+    Converts a gin configuration file to an OmegaConf DictConfig.
+
+    This function reads a gin configuration file, parses its contents, and
+    transforms it into a dictionary-like structure suitable for use with
+    OmegaConf and wandb.
+
+    Args:
+        gin_file_path (str): The path to the gin configuration file.
+
+    Returns:
+        DictConfig: An OmegaConf DictConfig object representing the gin
+        configuration.
+    """
+
+    config_dict = {}
+    with open(gin_file_path, 'r') as f:
+        for line in f:
+            line = line.strip()
+
+            # Skip empty lines and comments
+            if not line or line.startswith('#'):
+                continue
+
+            # Handle assignments
+            if '=' in line:
+                try:
+                    key, value = line.split('=', 1)
+                    key = key.strip()
+                    value = value.strip()
+
+                    # Attempt to evaluate the value, handling booleans and lists
+                    try:
+                        value = ast.literal_eval(value)  # Safely evaluate basic Python literals
+                    except (ValueError, SyntaxError):
+                        # If literal_eval fails, keep it as a string
+                        pass
+
+                    config_dict[key] = value
+                except Exception as e:
+                    print(f"Error parsing line: {line} - {e}")
+
+    # Handle class assignments and nested structures
+    nested_config = {}
+    for key, value in config_dict.items():
+        parts = key.split('.')
+        if len(parts) > 1:
+            # Create nested dictionaries
+            current = nested_config
+            for part in parts[:-1]:
+                current = current.setdefault(part, {})
+            current[parts[-1]] = value
+        else:
+            nested_config[key] = value
+
+    # Convert to OmegaConf DictConfig
+    cfg = OmegaConf.create(nested_config)
+    return cfg

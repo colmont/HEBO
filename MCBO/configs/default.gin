@@ -1,0 +1,37 @@
+import experiments.run_task_exps
+import mcbo.models.gp.kernel_factory
+import mcbo.models.gp.kernels
+import mcbo.tasks
+import mcbo.tasks.synthetic.sfu.sfu_base
+
+
+# Whether to log WandB params
+Experiments.debug = True
+
+# Verbosity level
+Experiments.verbose = 2
+
+# CUDA device id (CPU is used if id is negative)
+Experiments.device_id = 0  
+
+# Root of the result dir (./results by default)
+Experiments.result_dir = "./results"
+
+# Path to Absolut! executer
+Experiments.absolut_dir = "home/HEBO/MCBO/libs/Absolut/src/AbsolutNoLib"
+
+# General BO params
+Experiments.task_id = "labs"
+Experiments.opt_id = "gp_oh_rbf__ga__ei__basic"
+Experiments.bo_n_init = 20
+Experiments.max_num_iter = 200
+
+# General benchmark params
+FLIP = False
+TaskBase.flip = %FLIP
+SfuFunction.flip = %FLIP
+
+# Heat kernel params 
+HeatKernel.perm_inv = None
+HeatKernel.reparam = "casmo"
+kernel_factory.heat_kernel_use_ard = False
