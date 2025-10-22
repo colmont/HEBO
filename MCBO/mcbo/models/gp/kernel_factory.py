@@ -9,21 +9,25 @@
 
 from typing import Optional, Dict, Any, Union
 
+import gin
 import numpy as np
 from gpytorch.constraints import Interval
 from gpytorch.kernels import Kernel, MaternKernel, RBFKernel, ScaleKernel
 
 from mcbo.models.gp.kernels import DiffusionKernel, MixtureKernel, Overlap, TransformedOverlap, \
-    SubStringKernel, HEDKernel
+    SubStringKernel, HEDKernel, HeatKernel, ModDiffusionKernel, OneHotRBFKernel, OneHotMaternKernel, \
+    GraphMaternKernel, OneHotRQKernel
 from mcbo.search_space import SearchSpace
 
 
+@gin.configurable
 def kernel_factory(
         kernel_name: str,
         active_dims: Optional[Union[list, np.ndarray]] = None,
         use_ard: bool = True,
         lengthscale_constraint: Optional[Interval] = None,
         outputscale_constraint: Optional[Interval] = None,
+        heat_kernel_use_ard: bool = False,
         **kwargs
 ) -> Optional[Kernel]:
     if active_dims is not None:
@@ -35,6 +39,22 @@ def kernel_factory(
     # Kernels for numeric variables
     if kernel_name is None:
         kernel = None
+
+    elif kernel_name == 'mod_diffusion':
+        assert 'fourier_freq_list' in kwargs
+        assert 'fourier_basis_list' in kwargs
+        kernel = ModDiffusionKernel(active_dims=active_dims, ard_num_dims=ard_num_dims,
+                                 lengthscale_constraint=lengthscale_constraint,
+                                 fourier_freq_list=kwargs.get('fourier_freq_list'),
+                                 fourier_basis_list=kwargs.get('fourier_basis_list'))
+
+    elif kernel_name in ['graph_matern']:
+        assert 'fourier_freq_list' in kwargs
+        assert 'fourier_basis_list' in kwargs
+        kernel = GraphMaternKernel(active_dims=active_dims, ard_num_dims=ard_num_dims,
+                                 lengthscale_constraint=lengthscale_constraint,
+                                 fourier_freq_list=kwargs.get('fourier_freq_list'),
+                                 fourier_basis_list=kwargs.get('fourier_basis_list'))
 
     elif kernel_name == 'diffusion':
         assert 'fourier_freq_list' in kwargs
@@ -55,6 +75,22 @@ def kernel_factory(
     elif kernel_name == 'transformed_overlap':
         kernel = TransformedOverlap(active_dims=active_dims, ard_num_dims=ard_num_dims,
                                     lengthscale_constraint=lengthscale_constraint)
+    elif kernel_name == 'heat':
+        ard_num_dims = len(active_dims) if heat_kernel_use_ard else None
+        kernel = HeatKernel(active_dims=active_dims, ard_num_dims=ard_num_dims, num_cat=kwargs["num_cat"],
+                                    lengthscale_constraint=lengthscale_constraint)
+    elif kernel_name == 'oh_rbf':
+        ard_num_dims = len(active_dims) if heat_kernel_use_ard else None
+        kernel = OneHotRBFKernel(active_dims=active_dims, ard_num_dims=ard_num_dims, num_cat=kwargs["num_cat"],
+                                    lengthscale_constraint=lengthscale_constraint)
+    elif kernel_name == 'oh_matern':
+        ard_num_dims = len(active_dims) if heat_kernel_use_ard else None
+        kernel = OneHotMaternKernel(active_dims=active_dims, ard_num_dims=ard_num_dims, num_cat=kwargs["num_cat"],
+                                    lengthscale_constraint=lengthscale_constraint)
+    elif kernel_name == 'oh_rq':
+        ard_num_dims = len(active_dims) if heat_kernel_use_ard else None
+        kernel = OneHotRQKernel(active_dims=active_dims, ard_num_dims=ard_num_dims, num_cat=kwargs["num_cat"],
+                                lengthscale_constraint=lengthscale_constraint)
 
     elif kernel_name == 'ssk':
         assert 'search_space' in kwargs

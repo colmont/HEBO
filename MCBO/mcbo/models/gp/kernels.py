@@ -8,12 +8,13 @@
 # PARTICULAR PURPOSE. See the MIT License for more details.
 from typing import Union, List, Optional, Tuple, Dict, Any
 
+import gin
 import numpy as np
 import torch
 from gpytorch import settings, lazify, delazify
 from gpytorch.priors import Prior
 from gpytorch.constraints import Interval, Positive
-from gpytorch.kernels import Kernel, RBFKernel, ScaleKernel, MaternKernel
+from gpytorch.kernels import Kernel, RBFKernel, ScaleKernel, MaternKernel, RQKernel
 from gpytorch.lazy import LazyEvaluatedKernelTensor
 from torch.nn import ModuleList
 
@@ -119,6 +120,202 @@ class Overlap(Kernel):
         else:
             # dividing by number of cat variables to keep this term in range [0,1]
             k_cat = torch.sum(diff1, dim=-1) / x1.shape[1]
+        if diag:
+            return torch.diag(k_cat).to(x1)
+        return k_cat.to(x1)
+
+
+class OneHotRBFKernel(RBFKernel):
+    @property
+    def name(self) -> str:
+        return "One-hot RBF"
+
+    def __init__(self, num_cat: int, **kwargs):
+        super(OneHotRBFKernel, self).__init__(**kwargs)
+        self.num_cat = num_cat
+        self.register_buffer("eye", torch.eye(num_cat))
+
+    def forward(self, x1, x2, diag=False, **params):
+        if x1.dim() == 2:  # [n, d] case
+            n, d = x1.shape
+            m = x2.shape[0]
+            
+            x1_reshaped = x1.reshape(-1).long()  # [n*d]
+            x2_reshaped = x2.reshape(-1).long()  # [m*d]
+            
+            x1_onehot = self.eye[x1_reshaped]  # [n*d, num_cat]
+            x2_onehot = self.eye[x2_reshaped]  # [m*d, num_cat]
+            x1_onehot = x1_onehot.reshape(n, d * self.num_cat)  # [n, d*num_cat]
+            x2_onehot = x2_onehot.reshape(m, d * self.num_cat)  # [m, d*num_cat]
+        else:
+            x1_onehot = self.eye[x1.long()]
+            x2_onehot = self.eye[x2.long()]
+        
+        return super().forward(x1_onehot, x2_onehot, diag=diag, **params)
+
+
+class OneHotMaternKernel(MaternKernel):
+    @property
+    def name(self) -> str:
+        return "One-hot Matern"
+
+    def __init__(self, num_cat: int, **kwargs):
+        super(OneHotMaternKernel, self).__init__(**kwargs)
+        self.num_cat = num_cat
+        self.register_buffer("eye", torch.eye(num_cat))
+
+    def forward(self, x1, x2, diag=False, **params):
+        if x1.dim() == 2:  # [n, d] case
+            n, d = x1.shape
+            m = x2.shape[0]
+            
+            x1_reshaped = x1.reshape(-1).long()  # [n*d]
+            x2_reshaped = x2.reshape(-1).long()  # [m*d]
+            
+            x1_onehot = self.eye[x1_reshaped]  # [n*d, num_cat]
+            x2_onehot = self.eye[x2_reshaped]  # [m*d, num_cat]
+            
+            x1_onehot = x1_onehot.reshape(n, d * self.num_cat)  # [n, d*num_cat]
+            x2_onehot = x2_onehot.reshape(m, d * self.num_cat)  # [m, d*num_cat]
+        else:
+            x1_onehot = self.eye[x1.long()]
+            x2_onehot = self.eye[x2.long()]
+        
+        return super().forward(x1_onehot, x2_onehot, diag=diag, **params)
+
+
+class OneHotRQKernel(RQKernel):
+    @property
+    def name(self) -> str:
+        return "One-hot RQ"
+
+    def __init__(self, num_cat: int, **kwargs):
+        super(OneHotRQKernel, self).__init__(**kwargs)
+        self.num_cat = num_cat
+        self.register_buffer("eye", torch.eye(num_cat))
+
+    def forward(self, x1, x2, diag=False, **params):
+        # Convert categorical indices to one-hot vectors
+        if x1.dim() == 2:  # [n, d] case
+            n, d = x1.shape
+            m = x2.shape[0]
+            
+            # Reshape to handle each dimension separately
+            x1_reshaped = x1.reshape(-1).long()  # [n*d]
+            x2_reshaped = x2.reshape(-1).long()  # [m*d]
+            
+            # One-hot encode
+            x1_onehot = self.eye[x1_reshaped]  # [n*d, num_cat]
+            x2_onehot = self.eye[x2_reshaped]  # [m*d, num_cat]
+            
+            # Reshape back to original batch dimensions with one-hot features
+            x1_onehot = x1_onehot.reshape(n, d * self.num_cat)  # [n, d*num_cat]
+            x2_onehot = x2_onehot.reshape(m, d * self.num_cat)  # [m, d*num_cat]
+        else:
+            # Handle single dimension case
+            x1_onehot = self.eye[x1.long()]
+            x2_onehot = self.eye[x2.long()]
+        
+        # Call parent's forward with one-hot encoded inputs
+        return super().forward(x1_onehot, x2_onehot, diag=diag, **params)
+
+
+@gin.configurable
+class HeatKernel(Kernel):
+    """
+    Non-ARD equivalent of TransformedOverlap, with additional options for reparameterization and
+    permutation invariance.
+    """
+
+    has_lengthscale = True
+
+    @property
+    def name(self) -> str:
+        return "Heat"
+
+    def __init__(self, perm_inv: str, reparam: str, num_cat: int, **kwargs):
+        super(HeatKernel, self).__init__(has_lengthscale=True, **kwargs)
+        self.perm_inv = perm_inv
+        self.reparam = reparam
+        self.num_cat = num_cat
+
+        # init lengthscale closer to equivalent in "casmo"
+        if self.reparam == "kondor":
+            beta = self.lengthscale
+            g = self.num_cat * torch.ones(self.lengthscale.shape[1])
+            numerator = 1 - torch.exp(-beta*g) 
+            denominator = 1 + (g - 1) * torch.exp(-beta*g)
+            self.lengthscale = -torch.log(numerator / denominator)
+
+    def forward(self, x1, x2, diag=False, last_dim_is_batch=False, **params):
+        ARD = self.ard_num_dims is not None and self.ard_num_dims > 1
+        
+        if self.perm_inv == "proj":
+            x1, _ = torch.sort(x1, dim=1)
+            x2, _ = torch.sort(x2, dim=1)
+
+        elif self.perm_inv == "pad_proj":
+
+            def pad_and_sort(x, padding_value=-1, num_categories=11):
+                batch_size, seq_length = x.shape
+                
+                x_sorted, _ = torch.sort(x, dim=1)
+                padded = torch.full(
+                    (batch_size, seq_length * num_categories), 
+                    padding_value, 
+                    dtype=x.dtype, 
+                    device=x.device
+                )
+                
+                for category in range(num_categories):
+                    mask = (x_sorted == category)
+                    counts = mask.sum(dim=1)
+                    
+                    for batch_idx in range(batch_size):
+                        count = counts[batch_idx].item()
+                        start_idx = category * seq_length
+                        end_idx = start_idx + count
+                        padded[batch_idx, start_idx:end_idx] = category
+                
+                return padded
+
+            x1 = pad_and_sort(x1, padding_value=-1)
+            x2 = pad_and_sort(x2, padding_value=-1)
+
+        elif self.perm_inv in [None, "None"]:
+            pass
+
+        else:
+            raise ValueError(f"Permutation invariance {self.perm_inv} not recognised!")
+
+        diff = x1[:, None] - x2[None, :]
+        diff[torch.abs(diff) > 1e-5] = 1
+
+        if self.reparam == "casmo":
+            inv_diff = torch.logical_not(diff).to(x1)
+            if ARD:
+                k_cat = torch.exp(torch.sum(inv_diff * self.lengthscale, dim=-1) / torch.sum(self.lengthscale))
+            else:
+                k_cat = torch.exp(self.lengthscale * torch.sum(inv_diff, dim=-1) / x1.shape[1] / 2)
+
+        elif self.reparam == "kondor":
+            if ARD:
+                raise NotImplementedError
+
+            g = self.num_cat * torch.ones(x1.shape[1]).to(x1)
+
+            exp_term = torch.exp(-self.lengthscale.squeeze() * g)  # [d,]
+            numerator = 1 - exp_term  # [d,]
+            denominator = 1 + (g - 1) * exp_term  # [d,]
+            factor = numerator / denominator  # [d,]
+
+            factor_reshaped = factor.view(1, 1, -1)  # reshaping to [1, 1, d]
+            factor_powered = factor_reshaped ** diff  # broadcasting to [n, n, d]
+            k_cat = factor_powered.prod(dim=-1)  # [n, n]
+
+        else:
+            raise ValueError(f"Reparam {self.reparam} not recognised!")
+
         if diag:
             return torch.diag(k_cat).to(x1)
         return k_cat.to(x1)
@@ -349,6 +546,74 @@ class SubStringKernel(Kernel):
         following notation from Beck (2017)
         """
         return torch.pow(self.gap_decay.to(self.tril) * self.tril, self.exp.to(device=self.tril.device))
+
+
+class ModDiffusionKernel(Kernel):  # modified version for gradient-based MAP learning instead of slice sampling 
+    """
+    Usually Graph Kernel means a kernel between graphs, here this kernel is a kernel between vertices on a graph
+    Edge scales are not included in the module, instead edge weights of each subgraphs is used to calculate frequencies (fourier_freq)
+    """
+
+    has_lengthscale = True
+
+    @property
+    def name(self) -> str:
+        return "Diffusion"
+
+    def __init__(self, fourier_freq_list, fourier_basis_list, **kwargs):
+        super(ModDiffusionKernel, self).__init__(has_lengthscale=True, **kwargs)
+        self.fourier_freq_list = fourier_freq_list
+        self.fourier_basis_list = fourier_basis_list
+
+    def forward(self, X1: torch.Tensor, X2: torch.Tensor, diag=False, last_dim_is_batch=False, **params):
+        """
+        Args:
+            X1: each row is a vector with vertex numbers starting from 0 for each
+            X2: each row is a vector with vertex numbers starting from 0 for each
+
+        """
+        log_beta = self.lengthscale.squeeze() * torch.ones(X1.shape[1]).to(X1)
+        stabilizer = 0
+        if (X1.shape == X2.shape) and (X1 == X2).all():
+            X2 = X1
+            if diag:
+                stabilizer = 1e-6 * X1.new_ones(X1.size(0), 1, dtype=X1.dtype)
+            else:
+                stabilizer = torch.diag(1e-6 * X1.new_ones(X1.size(0), dtype=X1.dtype))
+
+        full_gram = 1
+        for i in range(len(self.fourier_freq_list)):
+            beta = torch.exp(log_beta[i].to(dtype=X1.dtype, device=X1.device))
+            fourier_freq = self.fourier_freq_list[i].to(dtype=X1.dtype, device=X1.device)
+            fourier_basis = self.fourier_basis_list[i].to(dtype=X1.dtype, device=X1.device)
+
+            subvec1 = fourier_basis[X1[:, i].long()]
+            subvec2 = fourier_basis[X2[:, i].long()]
+            freq_transform = torch.exp(-beta * fourier_freq)
+
+            if diag:
+                factor_gram = torch.sum(subvec1 * freq_transform.unsqueeze(0) * subvec2, dim=1, keepdim=True)
+            else:
+                factor_gram = torch.matmul(subvec1 * freq_transform.unsqueeze(0), subvec2.t())
+
+            # HACK for numerical stability for scalability
+            full_gram *= factor_gram / torch.mean(freq_transform)
+
+        res = full_gram + stabilizer
+
+        return res
+
+
+class GraphMaternKernel(ModDiffusionKernel):
+
+    nu = 2.5
+
+    @property
+    def name(self) -> str:
+        return "Graph Matern"
+
+    def _get_freq_transform(self, beta, fourier_freq):
+        return ((self.nu/beta) + fourier_freq)**(-self.nu)
 
 
 class DiffusionKernel(Kernel):

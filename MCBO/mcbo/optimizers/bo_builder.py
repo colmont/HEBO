@@ -136,7 +136,21 @@ class BoBuilder:
 
     @staticmethod
     def get_model(search_space: SearchSpace, model_id: str, **model_kwargs) -> ModelBase:
-        if model_id in ["gp_to", "gp_o", "gp_hed", "gp_ssk"]:
+        _, random_param = list(search_space.params.items())[0]
+        num_cat = len(random_param.categories)
+
+        if model_id in [
+            "gp_to",
+            "gp_o",
+            "gp_hed",
+            "gp_ssk",
+            "gp_heat",
+            "gp_eigen",
+            "gp_eigen_matern",
+            "gp_oh_rbf",
+            "gp_oh_matern",
+            "gp_oh_rq",
+        ]:
             gp_kwargs = DEFAULT_MODEL_EXACT_GP_KWARGS.copy()
             kernel_kwargs = DEFAULT_MODEL_EXACT_GP_KERNEL_KWARGS.copy()
             kernel_kwargs.update(model_kwargs.get("default_kernel_kwargs", {}))
@@ -144,6 +158,36 @@ class BoBuilder:
             if model_id == "gp_to":
                 kernel_kwargs["nominal_kernel_name"] = "transformed_overlap"
                 kernel_kwargs["nominal_kernel_use_ard"] = model_kwargs.get("nominal_kernel_use_ard", True)
+            elif model_id == "gp_heat":
+                kernel_kwargs["nominal_kernel_kwargs"] = {"num_cat": num_cat}
+                kernel_kwargs["nominal_kernel_name"] = "heat"
+                kernel_kwargs["nominal_kernel_use_ard"] = model_kwargs.get("nominal_kernel_use_ard", False)
+            elif model_id in ["gp_eigen", "gp_eigen_matern"]:
+                NAME_MAPPINGS = {
+                    "gp_eigen": "mod_diffusion",
+                    "gp_eigen_matern": "graph_matern",
+                }
+                kernel_kwargs["nominal_kernel_name"] = NAME_MAPPINGS[model_id]
+                kernel_kwargs["nominal_kernel_use_ard"] = model_kwargs.get("nominal_kernel_use_ard", False)
+
+                n_vertices, adjacency_mat_list, fourier_freq_list, fourier_basis_list = laplacian_eigen_decomposition(
+                    search_space=search_space, device=model_kwargs["device"])
+                kernel_kwargs["nominal_kernel_kwargs"] = {
+                    "fourier_freq_list": fourier_freq_list,
+                    "fourier_basis_list": fourier_basis_list,
+                }
+            elif model_id == "gp_oh_rbf":
+                kernel_kwargs["nominal_kernel_kwargs"] = {"num_cat": num_cat}
+                kernel_kwargs["nominal_kernel_name"] = "oh_rbf"
+                kernel_kwargs["nominal_kernel_use_ard"] = model_kwargs.get("nominal_kernel_use_ard", False)
+            elif model_id == "gp_oh_matern":
+                kernel_kwargs["nominal_kernel_kwargs"] = {"num_cat": num_cat}
+                kernel_kwargs["nominal_kernel_name"] = "oh_matern"
+                kernel_kwargs["nominal_kernel_use_ard"] = model_kwargs.get("nominal_kernel_use_ard", False)
+            elif model_id == "gp_oh_rq":
+                kernel_kwargs["nominal_kernel_kwargs"] = {"num_cat": num_cat}
+                kernel_kwargs["nominal_kernel_name"] = "oh_rq"
+                kernel_kwargs["nominal_kernel_use_ard"] = model_kwargs.get("nominal_kernel_use_ard", False)
             elif model_id == "gp_o":
                 kernel_kwargs["nominal_kernel_name"] = "overlap"
                 kernel_kwargs["nominal_kernel_use_ard"] = model_kwargs.get("nominal_kernel_use_ard", True)
