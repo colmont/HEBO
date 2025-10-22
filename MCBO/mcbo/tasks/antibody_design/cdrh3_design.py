@@ -44,6 +44,22 @@ class CDRH3Design(TaskBase):
 
     def evaluate(self, x: pd.DataFrame) -> np.ndarray:
 
+        if self.flip:
+            def flip(x):
+                assert x.ndim == 1
+                n_choice = 20
+                n_stages = 11
+                x = (x + np.random.RandomState(42).choice(n_choice, n_stages)) % n_choice
+                return x
+
+            COLUMNS = x.columns
+
+            x_short = np.vectorize(self.amino_acid_to_idx.get)(x)
+            x_short_shuffled = np.array([flip(_x) for _x in x_short])
+
+            x = np.vectorize(self.idx_to_amino_acid.get)(x_short_shuffled)
+            x = pd.DataFrame(x, columns=COLUMNS)
+
         if self.need_to_check_precomputed_antigen_structure:
             download_precomputed_antigen_structure(self.AbsolutNoLib_dir, self.antigen)
             self.need_to_check_precomputed_antigen_structure = False
