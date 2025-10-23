@@ -52,18 +52,16 @@ run_experiment "$SEEDS" "$TASKS_MAIN" "${OPT_IDS_METHODS[@]}" "None"
 
 # kernels
 OPT_IDS_KERNELS=(
-  "gp_heat__ga__ei__basic"  # Heat (reparam kondor)
-  "gp_heat__ga__ei__basic"  # Heat (reparam casmo)
-  "gp_oh_rbf__ga__ei__basic"  # One-hot RBF
-  "gp_oh_matern__ga__ei__basic"  # One-hot Matern
-  "gp_oh_rq__ga__ei__basic"  # One-hot Rational Quadratic 
-  "gp_eigen__ga__ei__basic" # COMBO kernel
+  "gp_heat__ga__ei__basic"  # Heat (reparam casmo/kondor)
+  "gp_oh_rbf__ga__ei__basic"  # Heat (one-hot RBF)
+  "gp_oh_matern__ga__ei__basic"  # One-hot Matern (Bounce)
+  "gp_oh_rq__ga__ei__basic"  # One-hot RQ 
+  "gp_eigen__ga__ei__basic" # Heat (COMBO)
   "gp_eigen_matern__ga__ei__basic" # Graph Matern
-  "gp_hed__ga__ei__basic"  # HED
-  "gp_ssk__ga__ei__basic"  # SSK
-  "gp_o__ga__ei__basic"  # overlap
+  "gp_hed__ga__ei__basic"  # HED (BODi)
+  "gp_ssk__ga__ei__basic"  # SSK (BOSS)
+  "gp_o__ga__ei__basic"  # Overlap (CoCaBO)
   "gp_rd__ga__ei__basic"  # Rand. decomp. (RDUCB)
-  "lr_sparse_hs__mab__pi__none"  # Random search
 )
 run_experiment "$SEEDS" "$TASKS_MAIN" "${OPT_IDS_KERNELS[@]}" "None"
 

@@ -26,12 +26,12 @@ Experiments.opt_id = "gp_oh_rbf__ga__ei__basic"
 Experiments.bo_n_init = 20
 Experiments.max_num_iter = 200
 
-# General benchmark params
+# Whether to randomly relocate the optimum
 FLIP = False
 TaskBase.flip = %FLIP
 SfuFunction.flip = %FLIP
 
 # Heat kernel params 
 HeatKernel.perm_inv = None
-HeatKernel.reparam = "casmo"
+HeatKernel.reparam = "casmo"  # or "kondor"
 kernel_factory.heat_kernel_use_ard = False
